@@ -4,9 +4,9 @@ import pandas_ta as ta
 
 def load_and_preprocess_data(csv_path: str, start_date: str = None, end_date: str = None):
     """
-    Loads EURUSD data from CSV and preprocesses it by adding RELATIVE technical features.
+    Loads forex/crypto data from CSV and preprocesses it by adding RELATIVE technical features.
 
-    CSV expected columns: [Time (EET), Open, High, Low, Close, Volume]
+    CSV expected columns: [Time (EET), Open, High, Low, Close, Volume] OR [Date, Open, High, Low, Price, ...]
     The returned DataFrame still contains OHLCV for env internals,
     but `feature_cols` lists only the RELATIVE columns to feed the agent.
     
@@ -15,17 +15,39 @@ def load_and_preprocess_data(csv_path: str, start_date: str = None, end_date: st
         start_date: Optional start date (e.g., "2000-01-01")
         end_date: Optional end date (e.g., "2015-12-31")
     """
-    df = pd.read_csv(
-        csv_path,
-        parse_dates=["Time (EET)"],
-        dayfirst=True,
-    )
+    # Try to determine the date column and read CSV accordingly
+    date_col = None
+    try:
+        # First check what columns exist
+        df = pd.read_csv(csv_path, nrows=1)
+        if "Time (EET)" in df.columns:
+            date_col = "Time (EET)"
+        elif "Date" in df.columns:
+            date_col = "Date"
+    except:
+        pass
+    
+    # Read the CSV with appropriate date column
+    if date_col:
+        df = pd.read_csv(csv_path, parse_dates=[date_col], dayfirst=True)
+    else:
+        df = pd.read_csv(csv_path)
 
-    # Strip any trailing spaces in headers (e.g. 'Volume ')
+    # Strip any trailing spaces in headers
     df.columns = df.columns.str.strip()
-
+    
+    # Handle different date column names
+    if "Time (EET)" in df.columns:
+        date_col = "Time (EET)"
+    elif "Date" in df.columns:
+        date_col = "Date"
+    else:
+        # If no recognized date column, check if first column is datetime
+        date_col = df.columns[0]
+    
     # Datetime index
-    df = df.set_index("Time (EET)")
+    if date_col in df.columns:
+        df = df.set_index(date_col)
     df.sort_index(inplace=True)
     
     # Filter by date range if provided
@@ -34,9 +56,19 @@ def load_and_preprocess_data(csv_path: str, start_date: str = None, end_date: st
     if end_date is not None:
         df = df[df.index <= end_date]
 
-    # Ensure numeric
-    for col in ["Open", "High", "Low", "Close", "Volume"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+    # Handle different price column names: "Price" in USD_INR, "Close" in EUR/USD
+    if "Price" in df.columns and "Close" not in df.columns:
+        df["Close"] = df["Price"]
+    
+    # Handle missing Volume column (common in some datasets)
+    if "Volume" not in df.columns:
+        df["Volume"] = 1.0  # Default volume
+    
+    # Ensure numeric for required columns
+    for col in ["Open", "High", "Low", "Close"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce")
 
     # ---- Technicals ----
     # RSI and ATR (already scale-invariant-ish)

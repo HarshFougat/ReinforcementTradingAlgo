@@ -38,8 +38,8 @@ def run_one_episode(model, vec_env, deterministic=True):
 
 
 def main():
-    # Choose the dataset you want to evaluate on
-    file_path = "data/EURUSD_15 Mins_Ask_2020.12.06_2025.12.12.csv"
+    # Using USD/INR historical data (2000-present)
+    file_path = "data/USD_INR Historical Data.csv"
     df_full, feature_cols = load_and_preprocess_data(file_path)
     
     # Use test data from 2016-2022

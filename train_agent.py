@@ -39,8 +39,8 @@ def evaluate_model(model: PPO, eval_env: DummyVecEnv, deterministic: bool = True
 
 
 def main():
-    #file_path = "data/EURUSD_15 Mins_Ask_2020.12.06_2025.12.12.csv"
-    file_path = "data/EURUSD_Hourly_Ask_2015.12.01_2025.12.16.csv"
+    # Using USD/INR historical data (2000-present)
+    file_path = "data/USD_INR Historical Data.csv"
     
     # Load full dataset first
     df_full, feature_cols = load_and_preprocess_data(file_path)
