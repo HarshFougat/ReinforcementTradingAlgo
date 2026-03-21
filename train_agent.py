@@ -41,12 +41,23 @@ def evaluate_model(model: PPO, eval_env: DummyVecEnv, deterministic: bool = True
 def main():
     #file_path = "data/EURUSD_15 Mins_Ask_2020.12.06_2025.12.12.csv"
     file_path = "data/EURUSD_Hourly_Ask_2015.12.01_2025.12.16.csv"
-    df, feature_cols = load_and_preprocess_data(file_path)
-
-    # Time split 80/20
-    split_idx = int(len(df) * 0.8)
-    train_df = df.iloc[:split_idx].copy()
-    test_df = df.iloc[split_idx:].copy()
+    
+    # Load full dataset first
+    df_full, feature_cols = load_and_preprocess_data(file_path)
+    
+    # Split by date: Training 2000-2015, Testing 2016-2022
+    train_df_tmp, _ = load_and_preprocess_data(file_path, start_date="2000-01-01", end_date="2015-12-31")
+    test_df_tmp, _ = load_and_preprocess_data(file_path, start_date="2016-01-01", end_date="2022-12-31")
+    
+    # If date splitting doesn't work (data doesn't span that range), fallback to 80/20
+    if len(train_df_tmp) == 0 or len(test_df_tmp) == 0:
+        split_idx = int(len(df_full) * 0.8)
+        train_df = df_full.iloc[:split_idx].copy()
+        test_df = df_full.iloc[split_idx:].copy()
+        print("Warning: Date-based split not possible. Using 80/20 split instead.")
+    else:
+        train_df = train_df_tmp
+        test_df = test_df_tmp
 
     print("Training bars:", len(train_df))
     print("Testing bars :", len(test_df))

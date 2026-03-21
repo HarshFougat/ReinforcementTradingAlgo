@@ -2,13 +2,18 @@ import pandas as pd
 import pandas_ta as ta
 
 
-def load_and_preprocess_data(csv_path: str):
+def load_and_preprocess_data(csv_path: str, start_date: str = None, end_date: str = None):
     """
     Loads EURUSD data from CSV and preprocesses it by adding RELATIVE technical features.
 
     CSV expected columns: [Time (EET), Open, High, Low, Close, Volume]
     The returned DataFrame still contains OHLCV for env internals,
     but `feature_cols` lists only the RELATIVE columns to feed the agent.
+    
+    Args:
+        csv_path: Path to the CSV file
+        start_date: Optional start date (e.g., "2000-01-01")
+        end_date: Optional end date (e.g., "2015-12-31")
     """
     df = pd.read_csv(
         csv_path,
@@ -22,6 +27,12 @@ def load_and_preprocess_data(csv_path: str):
     # Datetime index
     df = df.set_index("Time (EET)")
     df.sort_index(inplace=True)
+    
+    # Filter by date range if provided
+    if start_date is not None:
+        df = df[df.index >= start_date]
+    if end_date is not None:
+        df = df[df.index <= end_date]
 
     # Ensure numeric
     for col in ["Open", "High", "Low", "Close", "Volume"]:

@@ -40,11 +40,18 @@ def run_one_episode(model, vec_env, deterministic=True):
 def main():
     # Choose the dataset you want to evaluate on
     file_path = "data/EURUSD_15 Mins_Ask_2020.12.06_2025.12.12.csv"
-    df, feature_cols = load_and_preprocess_data(file_path)
-
-    # If you want a true OOS test here, split and use only the test slice:
-    split_idx = int(len(df) * 0.8)
-    test_df = df.iloc[split_idx:].copy()
+    df_full, feature_cols = load_and_preprocess_data(file_path)
+    
+    # Use test data from 2016-2022
+    test_df_tmp, _ = load_and_preprocess_data(file_path, start_date="2016-01-01", end_date="2022-12-31")
+    
+    # If date-based split doesn't work, fallback to 80/20
+    if len(test_df_tmp) == 0:
+        split_idx = int(len(df_full) * 0.8)
+        test_df = df_full.iloc[split_idx:].copy()
+        print("Warning: Date-based test split not possible. Using 20% tail split instead.")
+    else:
+        test_df = test_df_tmp
 
     # Must match training params
     SL_OPTS = [10, 15, 25]
