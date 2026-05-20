@@ -14,9 +14,7 @@ from indicators import load_and_preprocess_data
 # -----------------------------------------------------------------------------
 # Bybit demo credentials and constants
 # -----------------------------------------------------------------------------
-BYBIT_API_KEY = os.getenv('BYBIT_API_KEY', 'SNX2WlOlLVoFcbVG30')
-BYBIT_API_SECRET = os.getenv('BYBIT_API_SECRET', 'jMUpiSbuCUnnxn5F3fHdOfoXThNTTOcMxQtM')
-BYBIT_BASE_URL = 'https://api-demo.bybit.com'
+#import from env
 
 SYMBOL = 'BTCUSDT'
 INTERVAL = '1'  # 1-minute candles; can be '5', '15', '60' etc in bybit API
