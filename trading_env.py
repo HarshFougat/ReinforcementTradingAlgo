@@ -60,6 +60,9 @@ class ForexTradingEnv(gym.Env):
         hold_reward_weight: float = 0.005,   # tuned below
         open_penalty_pips: float = 0.5,      # NEW: penalty per open
         time_penalty_pips: float = 0.02,     # NEW: cost per bar in a trade
+        capital_risk_pct: float = 0.02,      # Risk 2% of capital per trade
+        min_risk_reward_ratio: float = 3.0,  # Minimum R:R ratio (1:3 means TP must be 3x SL)
+        risk_reward_bonus: float = 0.1,      # Bonus for trades with good risk:reward ratio
     ):
         super().__init__()
 
@@ -100,6 +103,11 @@ class ForexTradingEnv(gym.Env):
         self.hold_reward_weight = float(hold_reward_weight)
         self.open_penalty_pips = float(open_penalty_pips)
         self.time_penalty_pips = float(time_penalty_pips)
+
+        # Advanced Risk Management
+        self.capital_risk_pct = float(capital_risk_pct)       # Risk % per trade
+        self.min_risk_reward_ratio = float(min_risk_reward_ratio)  # Minimum 1:R ratio
+        self.risk_reward_bonus = float(risk_reward_bonus)     # Reward bonus for good RR
 
         # Episode handling
         self.random_start = bool(random_start)
@@ -164,6 +172,13 @@ class ForexTradingEnv(gym.Env):
         # Logging
         self.equity_curve = []
         self.last_trade_info = None
+        
+        # Risk Management Statistics
+        self.trades_closed = 0
+        self.winning_trades = 0
+        self.losing_trades = 0
+        self.total_win_pips = 0.0
+        self.total_loss_pips = 0.0
 
     def _get_state_features(self):
         # position in [-1,0,1], time normalized, unrealized in pips (scaled)
@@ -228,6 +243,30 @@ class ForexTradingEnv(gym.Env):
     def _cost_pips_round_trip(self) -> float:
         # Simple friction model (round-trip)
         return self.spread_pips + self.commission_pips
+    
+    def _calculate_risk_reward_ratio(self, sl_pips: float, tp_pips: float) -> float:
+        """Calculate risk:reward ratio (TP/SL). Higher is better."""
+        if sl_pips <= 0:
+            return 1.0
+        return tp_pips / sl_pips
+    
+    def _validate_risk_reward(self, sl_pips: float, tp_pips: float) -> bool:
+        """Check if trade meets minimum risk:reward ratio."""
+        rr_ratio = self._calculate_risk_reward_ratio(sl_pips, tp_pips)
+        return rr_ratio >= self.min_risk_reward_ratio
+    
+    def _calculate_position_size_by_risk(self, sl_pips: float) -> float:
+        """
+        Calculate position size based on 2% capital risk rule:
+        If we risk 2% of equity on SL distance, how many pips can we risk?
+        Capital_at_risk = Equity * 0.02
+        Position_size (in pips) = Capital_at_risk / (pip_value * lot_size)
+        """
+        if sl_pips <= 0:
+            return 1.0  # Default to normal
+        capital_at_risk = self.equity_usd * self.capital_risk_pct
+        max_pips_risk = capital_at_risk / self.usd_per_pip
+        return max_pips_risk / sl_pips
 
     def _open_position(self, direction: int, sl_pips: float, tp_pips: float):
         # Entry on current close + slippage; costs applied on close (round-trip model)
@@ -275,6 +314,15 @@ class ForexTradingEnv(gym.Env):
 
         # Update equity in USD
         self.equity_usd += net_pips * self.usd_per_pip
+
+        # Track trade statistics
+        self.trades_closed += 1
+        if net_pips > 0:
+            self.winning_trades += 1
+            self.total_win_pips += net_pips
+        else:
+            self.losing_trades += 1
+            self.total_loss_pips += abs(net_pips)
 
         trade_info = {
             "event": "CLOSE",
@@ -401,6 +449,12 @@ class ForexTradingEnv(gym.Env):
 
         elif act_type == "OPEN":
             if self.position == 0:
+                # Check risk:reward ratio
+                rr_ratio = self._calculate_risk_reward_ratio(sl_pips, tp_pips)
+                if self._validate_risk_reward(sl_pips, tp_pips):
+                    # Good risk:reward ratio - add bonus
+                    reward_pips += self.risk_reward_bonus * (rr_ratio - self.min_risk_reward_ratio)
+                
                 self._open_position(direction=direction, sl_pips=sl_pips, tp_pips=tp_pips)
                 # penalty for opening a trade to discourage overtrading
                 reward_pips -= self.open_penalty_pips
@@ -408,6 +462,12 @@ class ForexTradingEnv(gym.Env):
                 if self.allow_flip:
                     close_price = float(self.df.loc[self.current_step, "Close"])
                     reward_pips += self._close_position("FLIP_CLOSE", close_price)
+                    
+                    # Check risk:reward ratio for new trade
+                    rr_ratio = self._calculate_risk_reward_ratio(sl_pips, tp_pips)
+                    if self._validate_risk_reward(sl_pips, tp_pips):
+                        reward_pips += self.risk_reward_bonus * (rr_ratio - self.min_risk_reward_ratio)
+                    
                     self._open_position(direction=direction, sl_pips=sl_pips, tp_pips=tp_pips)
                     reward_pips -= self.open_penalty_pips
 
